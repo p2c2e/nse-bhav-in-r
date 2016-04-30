@@ -1,0 +1,73 @@
+---
+title: "BhavCopy"
+output: html_document
+---
+
+This file is meant to be used in conjunction with an article posted on http://www.diyd2.in
+
+
+1. Download the zip files containing bhav data from http://www.nseindia.com (historical data)
+1. Unzip the contents into some folder - you will need to edit the below code to load the csv files
+1. Load the csv files from given directory
+1. For given symbol, load and plot the close prices by time stamp
+
+
+Let us define a function that loads and merges all CSV files in a given folder
+```{r util_function}
+load_csvs <- function(path) {
+  files <- dir(path, pattern = '\\.csv$', full.names = TRUE)
+  tables <- lapply(files, read.csv)
+  do.call(rbind, tables)
+}
+
+```
+
+Since the dates are being parsed as a string, add a new date column from existing column.
+
+```{r load_data}
+basedir <- '~/bhav'
+bhavdata <- load_csvs(basedir)
+# sapply(bhavdata, class)
+bhavdata['TS_DATE'] <- NA
+bhavdata['TS_DATE'] <- as.Date(bhavdata$TIMESTAMP, "%d-%b-%Y")
+
+```
+
+Now, try plotting a line chart with the given details..
+
+```{r plot-line-chart}
+symb <- 'INFY'
+
+require(ggplot2)
+df <- bhavdata[bhavdata$SYMBOL == symb,]
+ggplot( data = df, aes( TS_DATE, CLOSE )) + geom_line() 
+
+```
+
+You will notice the dramatic drop in share price sometime in June. It turns out that the INFY has announced a 1:1 bonus issue and the stock was being quoted ex-bonus from June-15th, 2015 onwards.
+
+Doing a candle chart seems to be a bit more harder. I have hardcoded some things to make it work. 
+
+
+```{r plot-candle}
+
+df$chg <- ifelse(df$CLOSE > df$OPEN, "UP", "DN")
+df$width <- 3 
+df$no_change <- df[, "HIGH"] == df[, "LOW"]
+
+# Candle chart
+pl <- ggplot(df, aes(x=TS_DATE))+
+  geom_linerange(aes(ymin=LOW, ymax=HIGH)) +
+  theme_bw() +
+  labs(title="df") +
+  geom_rect(
+    aes(xmin = TS_DATE - width/2 * 0.9, xmax = TS_DATE + width/2 * 0.9, 
+        ymin = pmin(OPEN, CLOSE), ymax = pmax(OPEN, CLOSE), fill = chg)
+    ) + guides(fill = FALSE, colour = FALSE) + scale_fill_manual(values = c("DN" = "red", "UP" = "green"))
+
+# When OPEN and CLOSE are same ...
+if (any(df$no_change)) pl <- pl + geom_segment(data = df[df$no_change,], aes(x = TS_DATE - width / 2 * 0.9, y = CLOSE, yend = CLOSE, xend = TS_DATE + width / 2 * 0.9))
+
+print(pl)
+
+```
